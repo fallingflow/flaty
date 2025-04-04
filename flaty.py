@@ -54,8 +54,60 @@ def calib_camera_from_chessboard(images, board_pattern, board_cellsize, K=None, 
     # Calibrate the camera
     return cv.calibrateCamera(obj_points, img_points, gray.shape[::-1], K, dist_coeff, flags=calib_flags)
 
+def distortion_correction(video_file, K, dist_coeff, output_file='output.mp4'):
+    # Open a video
+    video = cv.VideoCapture(video_file)
+    assert video.isOpened(), 'Cannot read the given input, ' + video_file
+
+    frame_width = int(video.get(cv.CAP_PROP_FRAME_WIDTH)) * 2
+    frame_height = int(video.get(cv.CAP_PROP_FRAME_HEIGHT))
+    fps = video.get(cv.CAP_PROP_FPS)
+
+    fourcc = cv.VideoWriter_fourcc(*'mp4v')
+    out = cv.VideoWriter(output_file, fourcc, fps, (frame_width, frame_height))
+
+    # Run distortion correction
+    show_rectify = True
+    map1, map2 = None, None
+    while True:
+        # Read an image from the video
+        valid, img = video.read()
+        if not valid:
+            break
+
+        original = img.copy()
+
+        # Rectify geometric distortion (Alternative: `cv.undistort()`)
+        info = "Original"
+        if show_rectify:
+            if map1 is None or map2 is None:
+                map1, map2 = cv.initUndistortRectifyMap(K, dist_coeff, None, None, (img.shape[1], img.shape[0]), cv.CV_32FC1)
+            img = cv.remap(img, map1, map2, interpolation=cv.INTER_LINEAR)
+            info = "Rectified"
+        cv.putText(img, info, (10, 25), cv.FONT_HERSHEY_DUPLEX, 0.6, (0, 255, 0))
+
+        # Combine the original video and undistorted video
+        combined_frame = np.hstack((original, img))
+
+        # Write the combined frame to the output video
+        out.write(combined_frame)
+
+        # Show the image and process the key event
+        cv.imshow("Geometric Distortion Correction", img)
+        key = cv.waitKey(10)
+        if key == ord(' '):     # Space: Pause
+            key = cv.waitKey()
+        if key == 27:           # ESC: Exit
+            break
+        elif key == ord('\t'):  # Tab: Toggle the mode
+            show_rectify = not show_rectify
+
+    video.release()
+    out.release()
+    cv.destroyAllWindows()
+
 if __name__ == '__main__':
-    video_file = '../data/chessboard.avi'
+    video_file = './data/20250404_164425.mp4 '
     board_pattern = (10, 7)
     board_cellsize = 0.025
 
@@ -69,3 +121,5 @@ if __name__ == '__main__':
     print(f'* RMS error = {rms}')
     print(f'* Camera matrix (K) = \n{K}')
     print(f'* Distortion coefficient (k1, k2, p1, p2, k3, ...) = {dist_coeff.flatten()}')
+
+    distortion_correction(video_file, K, dist_coeff)
